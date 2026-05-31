@@ -1,0 +1,28 @@
+{
+  "name": "@job-portal/auth",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@better-auth/mongo-adapter": "^1.6.11",
+    "@job-portal/db": "workspace:*",
+    "@job-portal/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "stripe": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@job-portal/config": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}

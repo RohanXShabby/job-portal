@@ -1,0 +1,3 @@
+{
+  "extends": "@job-portal/config/tsconfig.base.json"
+}

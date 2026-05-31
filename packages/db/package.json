@@ -1,0 +1,23 @@
+{
+  "name": "@job-portal/db",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@job-portal/env": "workspace:*",
+    "dotenv": "catalog:",
+    "mongoose": "^9.6.2",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@job-portal/config": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}
