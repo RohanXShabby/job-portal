@@ -9,6 +9,32 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true },
     emailVerified: { type: Boolean, required: true },
     image: { type: String },
+    role: {
+      type: String,
+      enum: ["super_admin", "admin", "recruiter", "candidate"],
+      default: "candidate",
+    },
+    skills: [{ type: String }],
+    experience: [
+      {
+        title: { type: String },
+        company: { type: String },
+        startDate: { type: Date },
+        endDate: { type: Date },
+        description: { type: String },
+      },
+    ],
+    education: [
+      {
+        institution: { type: String },
+        degree: { type: String },
+        fieldOfStudy: { type: String },
+        startDate: { type: Date },
+        endDate: { type: Date },
+      },
+    ],
+    savedJobs: [{ type: Schema.Types.ObjectId, ref: "Job" }],
+    isDeleted: { type: Boolean, default: false },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
   },

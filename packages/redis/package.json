@@ -1,0 +1,20 @@
+{
+  "name": "@job-portal/redis",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@job-portal/env": "workspace:*",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "@job-portal/config": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}

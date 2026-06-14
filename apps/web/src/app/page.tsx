@@ -1,30 +1,33 @@
-"use client";
+import type { Metadata } from "next";
 
-const TITLE_TEXT = `
- ██████╗ ███████╗████████╗████████╗███████╗██████╗
- ██╔══██╗██╔════╝╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗
- ██████╔╝█████╗     ██║      ██║   █████╗  ██████╔╝
- ██╔══██╗██╔══╝     ██║      ██║   ██╔══╝  ██╔══██╗
- ██████╔╝███████╗   ██║      ██║   ███████╗██║  ██║
- ╚═════╝ ╚══════╝   ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝
+import Hero from "@/components/landing/hero";
+import Stats from "@/components/landing/stats";
+import Features from "@/components/landing/features";
+import HowItWorks from "@/components/landing/how-it-works";
+import Benefits from "@/components/landing/benefits";
+import Testimonials from "@/components/landing/testimonials";
+import Faq from "@/components/landing/faq";
+import Cta from "@/components/landing/cta";
+import Footer from "@/components/landing/footer";
 
- ████████╗    ███████╗████████╗ █████╗  ██████╗██╗  ██╗
- ╚══██╔══╝    ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝
-    ██║       ███████╗   ██║   ███████║██║     █████╔╝
-    ██║       ╚════██║   ██║   ██╔══██║██║     ██╔═██╗
-    ██║       ███████║   ██║   ██║  ██║╚██████╗██║  ██╗
-    ╚═╝       ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
- `;
+export const metadata: Metadata = {
+  title: "JobPortal — Find Your Next Dream Job With Confidence",
+  description:
+    "Connect with innovative companies, streamline your application process, and track your career growth on the #1 platform for modern professionals.",
+};
 
 export default function Home() {
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-2">
-      <pre className="overflow-x-auto font-mono text-sm">{TITLE_TEXT}</pre>
-      <div className="grid gap-6">
-        <section className="rounded-lg border p-4">
-          <h2 className="mb-2 font-medium">API Status</h2>
-        </section>
-      </div>
+    <div className="flex flex-col min-h-screen bg-background text-foreground">
+      <Hero />
+      <Stats />
+      <Features />
+      <HowItWorks />
+      <Benefits />
+      <Testimonials />
+      <Faq />
+      <Cta />
+      <Footer />
     </div>
   );
 }

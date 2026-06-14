@@ -8,12 +8,19 @@ This project was created with [Better Fullstack](https://github.com/Marve10s/Bet
 - **Next.js** - Full-stack React framework
 - **TailwindCSS** - CSS framework
 - **shadcn/ui** - UI components
-- **Express** - Fast, unopinionated web framework
+- **Hono** - Lightweight Bun-compatible API framework
+- **Express** - Used for Better Auth route compatibility
 - **Bun** - Runtime environment
-- **Mongoose** - TypeScript-first ORM
+- **Mongoose** - TypeScript-first ODM
 - **MongoDB** - Database engine
 - **Authentication** - Better Auth
 - **Turborepo** - Optimized monorepo build system
+
+## Documentation
+
+- `docs/ARCHITECTURE.md` - System architecture and design decisions
+- `docs/API_SPEC.md` - API contract and endpoint definitions
+- `docs/ER_DIAGRAM.mmd` - Entity relationship diagram
 
 ## Getting Started
 
@@ -43,7 +50,7 @@ bun run dev
 ```
 
 Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-The API is running at [http://localhost:3000](http://localhost:3000).
+The API is running at [http://localhost:3001](http://localhost:3001).
 
 ## Project Structure
 

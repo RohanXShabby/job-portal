@@ -26,6 +26,7 @@
     "filepond-plugin-file-validate-size": "^2.2.8",
     "filepond-plugin-file-validate-type": "^1.2.9",
     "filepond-plugin-image-preview": "^4.6.12",
+    "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
     "next": "^16.2.6",
     "next-intl": "^4.12.0",

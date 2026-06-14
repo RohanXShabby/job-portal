@@ -7,12 +7,13 @@ export const connection: ConnectionOptions = {
   maxRetriesPerRequest: null,
 };
 
-/**
- * Example queue for background job processing
- * @see https://docs.bullmq.io/
- */
+// Queue definitions
 export const emailQueue = new Queue("email", { connection });
 export const notificationQueue = new Queue("notification", { connection });
+export const resumeQueue = new Queue("resume-processing", { connection });
+export const searchIndexQueue = new Queue("search-indexing", { connection });
+export const analyticsQueue = new Queue("analytics", { connection });
+export const deadLetterQueue = new Queue("dead-letter", { connection });
 
 // Define job data types
 export interface EmailJobData {
@@ -24,77 +25,96 @@ export interface EmailJobData {
 
 export interface NotificationJobData {
   userId: string;
-  type: "push" | "in-app" | "sms";
+  type: "push" | "in-app" | "email";
   title: string;
   message: string;
   data?: Record<string, unknown>;
 }
 
-/**
- * Add an email job to the queue
- */
-export async function queueEmail(
-  data: EmailJobData,
-  options?: { delay?: number; priority?: number },
-) {
+export interface ResumeJobData {
+  userId: string;
+  resumeId: string;
+  s3Key: string;
+}
+
+export interface SearchIndexJobData {
+  action: "index" | "update" | "delete";
+  jobId: string;
+  jobData?: any; // The payload to index
+}
+
+export interface AnalyticsJobData {
+  event: string;
+  userId?: string;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export interface DLQJobData {
+  queueName: string;
+  jobId: string;
+  jobData: any;
+  failedReason: string;
+  failedAt: string;
+}
+
+// Queue Helper Functions
+const defaultRetryOptions = {
+  attempts: 3,
+  backoff: {
+    type: "exponential" as const,
+    delay: 2000, // Wait 2s, then 4s, then 8s
+  },
+};
+
+export async function queueEmail(data: EmailJobData, options?: { delay?: number; priority?: number }) {
   return emailQueue.add("send-email", data, {
+    ...defaultRetryOptions,
     delay: options?.delay,
     priority: options?.priority,
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 1000,
-    },
   });
 }
 
-/**
- * Add a notification job to the queue
- */
 export async function queueNotification(data: NotificationJobData, options?: { delay?: number }) {
   return notificationQueue.add("send-notification", data, {
+    ...defaultRetryOptions,
     delay: options?.delay,
-    attempts: 3,
+  });
+}
+
+export async function queueResumeProcessing(data: ResumeJobData) {
+  return resumeQueue.add("process-resume", data, {
+    ...defaultRetryOptions,
+  });
+}
+
+export async function queueSearchIndex(data: SearchIndexJobData) {
+  return searchIndexQueue.add("sync-search", data, {
+    ...defaultRetryOptions,
+  });
+}
+
+export async function queueAnalytics(data: AnalyticsJobData) {
+  return analyticsQueue.add("track-analytics", data, {
+    attempts: 2, // Analytics can have lower retry threshold
     backoff: {
       type: "exponential",
-      delay: 1000,
+      delay: 5000,
     },
   });
 }
 
-/**
- * Schedule a recurring job (cron-style)
- * @example scheduleRecurringJob(emailQueue, "daily-report", { type: "report" }, "0 9 * * *")
- */
-export async function scheduleRecurringJob<T>(
-  queue: Queue,
-  name: string,
-  data: T,
-  pattern: string, // Cron pattern
-) {
-  return queue.upsertJobScheduler(name, { pattern }, { name, data: data as object });
+export async function queueToDLQ(data: DLQJobData) {
+  return deadLetterQueue.add("failed-job-log", data);
 }
 
-/**
- * Get queue statistics
- */
-export async function getQueueStats(queue: Queue) {
-  const [waiting, active, completed, failed, delayed] = await Promise.all([
-    queue.getWaitingCount(),
-    queue.getActiveCount(),
-    queue.getCompletedCount(),
-    queue.getFailedCount(),
-    queue.getDelayedCount(),
-  ]);
-
-  return { waiting, active, completed, failed, delayed };
-}
-
-/**
- * Gracefully close all queues and connections
- * Call this during application shutdown
- */
 export async function closeQueues() {
-  await emailQueue.close();
-  await notificationQueue.close();
+  await Promise.all([
+    emailQueue.close(),
+    notificationQueue.close(),
+    resumeQueue.close(),
+    searchIndexQueue.close(),
+    analyticsQueue.close(),
+    deadLetterQueue.close(),
+  ]);
 }

@@ -1,0 +1,105 @@
+erDiagram
+    USER {
+      string id PK
+      string name
+      string email
+      string role
+      boolean emailVerified
+      string image
+      string[] skills
+    }
+    COMPANY {
+      ObjectId id PK
+      string name
+      string slug
+      string logoUrl
+      string website
+      string description
+      string industry
+      string location
+      boolean isVerified
+    }
+    JOB {
+      ObjectId id PK
+      string title
+      string slug
+      string description
+      ObjectId companyId FK
+      string companyName
+      string companyLogo
+      string location
+      string type
+      number salaryMin
+      number salaryMax
+      string currency
+      string experienceLevel
+      string[] skillsRequired
+      string status
+    }
+    APPLICATION {
+      ObjectId id PK
+      ObjectId jobId FK
+      string candidateId FK
+      string resumeUrl
+      string status
+    }
+    RESUME {
+      ObjectId id PK
+      string userId FK
+      string s3Key
+      string fileName
+      number fileSize
+      string parsedText
+    }
+    SUBSCRIPTION {
+      ObjectId id PK
+      string userId FK
+      ObjectId companyId FK
+      string stripeCustomerId
+      string stripeSubscriptionId
+      string planId
+      string status
+    }
+    PAYMENT {
+      ObjectId id PK
+      ObjectId subscriptionId FK
+      string userId FK
+      number amount
+      string currency
+      string stripePaymentIntentId
+      string status
+    }
+    NOTIFICATION {
+      ObjectId id PK
+      string userId FK
+      string title
+      string message
+      string type
+      boolean isRead
+    }
+    AUDITLOG {
+      ObjectId id PK
+      string userId FK
+      string action
+      Date createdAt
+    }
+    SUPPORTTICKET {
+      ObjectId id PK
+      string userId FK
+      string companyId FK
+      string subject
+      string description
+      string status
+    }
+
+    USER ||--o{ COMPANY : manages
+    COMPANY ||--o{ JOB : posts
+    JOB ||--o{ APPLICATION : receives
+    USER ||--o{ APPLICATION : applies_to
+    USER ||--o{ RESUME : owns
+    USER ||--o{ SUBSCRIPTION : owns
+    SUBSCRIPTION ||--o{ PAYMENT : covers
+    USER ||--o{ NOTIFICATION : receives
+    USER ||--o{ AUDITLOG : records
+    USER ||--o{ SUPPORTTICKET : creates
+    COMPANY ||--o{ SUPPORTTICKET : handles

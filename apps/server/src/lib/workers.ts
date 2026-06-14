@@ -1,111 +1,206 @@
 import { Worker, type Job } from "bullmq";
-
-import { connection, type EmailJobData, type NotificationJobData } from "./queue.js";
+import {
+  connection,
+  queueToDLQ,
+  type EmailJobData,
+  type NotificationJobData,
+  type ResumeJobData,
+  type SearchIndexJobData,
+  type AnalyticsJobData,
+} from "./queue.js";
+import { sendEmail } from "./email.js";
+import { NotificationModel, ResumeModel, AuditLogModel, User } from "@job-portal/db";
+import { searchService } from "./search.js";
 
 /**
- * Email worker - processes email sending jobs
- * @see https://docs.bullmq.io/guide/workers
+ * Helper to handle failed jobs and route to Dead Letter Queue (DLQ)
+ */
+function handleWorkerFailure(queueName: string) {
+  return async (job: Job | undefined, err: Error) => {
+    if (!job) return;
+    console.error(`[Worker] Job ${job.id} on queue ${queueName} failed:`, err.message);
+
+    // Route to DLQ if max attempts reached
+    if (job.attemptsMade >= (job.opts.attempts || 1)) {
+      console.warn(`[DLQ] Job ${job.id} from queue ${queueName} reached max retries. Relaying to DLQ.`);
+      try {
+        await queueToDLQ({
+          queueName,
+          jobId: job.id || "unknown",
+          jobData: job.data,
+          failedReason: err.message,
+          failedAt: new Date().toISOString(),
+        });
+      } catch (dlqErr: any) {
+        console.error(`[DLQ Error] Failed to write job ${job.id} to DLQ:`, dlqErr.message);
+      }
+    }
+  };
+}
+
+/**
+ * 1. Email Worker
  */
 export const emailWorker = new Worker<EmailJobData>(
   "email",
   async (job: Job<EmailJobData>) => {
-    const { to } = job.data;
-
-    console.log(`Processing email job ${job.id}: sending to ${to}`);
-
-    // TODO: Implement your email sending logic here
-    // Example with a hypothetical email service:
-    // await emailService.send({ to, subject, body, templateId });
-
-    // Simulate email sending
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    console.log(`Email job ${job.id} completed: sent to ${to}`);
-
-    return { sent: true, to, timestamp: new Date().toISOString() };
+    const { to, subject, body } = job.data;
+    console.log(`[Email Worker] Processing email job ${job.id} to ${to}`);
+    await sendEmail({
+      to,
+      subject,
+      html: body,
+    });
   },
-  {
-    connection,
-    concurrency: 5, // Process up to 5 jobs in parallel
-    limiter: {
-      max: 100, // Max 100 jobs
-      duration: 60000, // Per minute (rate limiting)
-    },
-  },
+  { connection, concurrency: 5 }
 );
 
+emailWorker.on("failed", handleWorkerFailure("email"));
+
 /**
- * Notification worker - processes notification jobs
+ * 2. Notification Worker
  */
 export const notificationWorker = new Worker<NotificationJobData>(
   "notification",
   async (job: Job<NotificationJobData>) => {
-    const { userId, type } = job.data;
+    const { userId, type, title, message, data } = job.data;
+    console.log(`[Notification Worker] Processing notification ${job.id} for user ${userId}`);
 
-    console.log(`Processing notification job ${job.id}: ${type} to user ${userId}`);
+    if (type === "in-app" || type === "push") {
+      // Save notification to database for in-app retrieval
+      await NotificationModel.create({
+        userId,
+        title,
+        message,
+        type: "info",
+        meta: data ? new Map(Object.entries(data)) : undefined,
+      });
+    }
 
-    // TODO: Implement your notification logic here
-    // Example:
-    // switch (type) {
-    //   case "push":
-    //     await pushService.send(userId, { title, message, data });
-    //     break;
-    //   case "in-app":
-    //     await inAppNotificationService.create(userId, { title, message, data });
-    //     break;
-    //   case "sms":
-    //     await smsService.send(userId, message);
-    //     break;
-    // }
-
-    // Simulate notification processing
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    console.log(`Notification job ${job.id} completed`);
-
-    return { sent: true, type, userId, timestamp: new Date().toISOString() };
+    if (type === "email") {
+      // Proxy notification to email queue
+      const user = await User.findById(userId);
+      if (user && user.email) {
+        await sendEmail({
+          to: user.email,
+          subject: title,
+          html: message,
+        });
+      }
+    }
   },
-  {
-    connection,
-    concurrency: 10,
-  },
+  { connection, concurrency: 10 }
 );
 
-// Event handlers for monitoring
-emailWorker.on("completed", (job) => {
-  console.log(`Email job ${job.id} has completed`);
-});
-
-emailWorker.on("failed", (job, err) => {
-  console.error(`Email job ${job?.id} has failed with error: ${err.message}`);
-});
-
-notificationWorker.on("completed", (job) => {
-  console.log(`Notification job ${job.id} has completed`);
-});
-
-notificationWorker.on("failed", (job, err) => {
-  console.error(`Notification job ${job?.id} has failed with error: ${err.message}`);
-});
+notificationWorker.on("failed", handleWorkerFailure("notification"));
 
 /**
- * Gracefully close all workers
- * Call this during application shutdown
+ * 3. Resume Processing Worker
  */
+export const resumeWorker = new Worker<ResumeJobData>(
+  "resume-processing",
+  async (job: Job<ResumeJobData>) => {
+    const { userId, resumeId, s3Key } = job.data;
+    console.log(`[Resume Worker] Parsing resume file ${resumeId} for user ${userId} (Key: ${s3Key})`);
+
+    // Simulate parsing the resume (extracting text, skills)
+    // In production, this would call a parser microservice or PDF library
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const mockParsedText = "Senior Full Stack developer experienced with React, Node.js, and TypeScript.";
+    const mockSkills = ["react", "node.js", "typescript", "mongodb", "redis"];
+
+    // Update resume in database
+    await ResumeModel.updateOne(
+      { _id: resumeId },
+      { parsedText: mockParsedText }
+    );
+
+    // Automatically enrich user's profile with matching skills
+    await User.updateOne(
+      { _id: userId },
+      { $addToSet: { skills: { $each: mockSkills } } }
+    );
+
+    console.log(`[Resume Worker] Resume ${resumeId} processed. Profile updated.`);
+  },
+  { connection, concurrency: 2 }
+);
+
+resumeWorker.on("failed", handleWorkerFailure("resume-processing"));
+
+/**
+ * 4. Search Indexing Worker
+ */
+export const searchIndexWorker = new Worker<SearchIndexJobData>(
+  "search-indexing",
+  async (job: Job<SearchIndexJobData>) => {
+    const { action, jobId, jobData } = job.data;
+    console.log(`[Search Index Worker] Syncing search index for Job: ${jobId} (Action: ${action})`);
+
+    if (action === "index") {
+      await searchService.indexJob(jobData);
+    } else if (action === "update") {
+      await searchService.updateJob(jobData);
+    } else if (action === "delete") {
+      await searchService.deleteJob(jobId);
+    }
+  },
+  { connection, concurrency: 5 }
+);
+
+searchIndexWorker.on("failed", handleWorkerFailure("search-indexing"));
+
+/**
+ * 5. Analytics Worker
+ */
+export const analyticsWorker = new Worker<AnalyticsJobData>(
+  "analytics",
+  async (job: Job<AnalyticsJobData>) => {
+    const { event, userId, timestamp, metadata } = job.data;
+    console.log(`[Analytics Worker] Logging event "${event}"`);
+
+    // Insert into DB audit logs
+    await AuditLogModel.create({
+      userId,
+      action: `analytics.${event}`,
+      details: metadata ? new Map(Object.entries(metadata)) : undefined,
+      createdAt: new Date(timestamp),
+    });
+  },
+  { connection, concurrency: 10 }
+);
+
+analyticsWorker.on("failed", handleWorkerFailure("analytics"));
+
+/**
+ * 6. DLQ Log Monitor (Just registers consumption of dead letter queue logs)
+ */
+export const dlqWorker = new Worker(
+  "dead-letter",
+  async (job: Job) => {
+    console.error(`[DLQ ALERT] Retrieved dead lettered job:`, JSON.stringify(job.data, null, 2));
+    // Here we could alert page-duty or Slack webhook
+  },
+  { connection, concurrency: 1 }
+);
+
 export async function closeWorkers() {
-  await emailWorker.close();
-  await notificationWorker.close();
+  await Promise.all([
+    emailWorker.close(),
+    notificationWorker.close(),
+    resumeWorker.close(),
+    searchIndexWorker.close(),
+    analyticsWorker.close(),
+    dlqWorker.close(),
+  ]);
 }
 
-/**
- * Start all workers
- * Workers start automatically when created, but this function can be used
- * to ensure they're running or to restart after being paused
- */
 export function startWorkers() {
-  // Workers are already running by default
-  // This function is here for explicit control if needed
-  console.log("BullMQ workers started");
-  console.log("- Email worker: processing 'email' queue");
-  console.log("- Notification worker: processing 'notification' queue");
+  console.log("BullMQ workers started:");
+  console.log("- emailWorker");
+  console.log("- notificationWorker");
+  console.log("- resumeWorker");
+  console.log("- searchIndexWorker");
+  console.log("- analyticsWorker");
+  console.log("- dlqWorker");
 }

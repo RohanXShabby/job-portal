@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -18,6 +21,16 @@ import { Skeleton } from "./ui/skeleton";
 export default function UserMenu() {
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render until client-side hydration is complete
+  if (!mounted) {
+    return <Skeleton className="h-9 w-24" />;
+  }
 
   if (isPending) {
     return <Skeleton className="h-9 w-24" />;
@@ -60,3 +73,4 @@ export default function UserMenu() {
     </DropdownMenu>
   );
 }
+

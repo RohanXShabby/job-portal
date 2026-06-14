@@ -18,7 +18,7 @@ interface WelcomeEmailProps {
 
 export function WelcomeEmail({
   username = "there",
-  loginUrl = "http://localhost:3000",
+  loginUrl = "http://localhost:3001",
 }: WelcomeEmailProps) {
   return (
     <Html>

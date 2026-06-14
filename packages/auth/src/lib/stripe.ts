@@ -1,9 +1,38 @@
 import { env } from "@job-portal/env/server";
 import Stripe from "stripe";
 
-export const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-12-18",
-});
+// Lazy-initialize Stripe to allow development without API keys
+let stripeInstance: Stripe | null = null;
+
+function getStripe(): Stripe {
+  if (!env.STRIPE_SECRET_KEY) {
+    throw new Error(
+      "STRIPE_SECRET_KEY is not configured. Set it to enable Stripe payment functionality.",
+    );
+  }
+
+  if (!stripeInstance) {
+    stripeInstance = new Stripe(env.STRIPE_SECRET_KEY);
+  }
+
+  return stripeInstance;
+}
+
+export const stripe = {
+  checkout: {
+    sessions: {
+      create: (params: any) => getStripe().checkout.sessions.create(params),
+    },
+  },
+  webhooks: {
+    constructEvent: (payload: string | Buffer, signature: string) =>
+      getStripe().webhooks.constructEvent(
+        payload,
+        signature,
+        env.STRIPE_WEBHOOK_SECRET || "",
+      ),
+  },
+} as any;
 
 export async function createCheckoutSession(params: {
   priceId: string;
@@ -12,7 +41,7 @@ export async function createCheckoutSession(params: {
   customerId?: string;
   metadata?: Record<string, string>;
 }) {
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
     line_items: [
@@ -37,7 +66,7 @@ export async function createSubscriptionCheckout(params: {
   customerId?: string;
   metadata?: Record<string, string>;
 }) {
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
     line_items: [
@@ -56,5 +85,10 @@ export async function createSubscriptionCheckout(params: {
 }
 
 export async function constructWebhookEvent(payload: string | Buffer, signature: string) {
-  return stripe.webhooks.constructEvent(payload, signature, env.STRIPE_WEBHOOK_SECRET);
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    throw new Error(
+      "STRIPE_WEBHOOK_SECRET is not configured. Stripe webhook verification is disabled.",
+    );
+  }
+  return getStripe().webhooks.constructEvent(payload, signature, env.STRIPE_WEBHOOK_SECRET);
 }
