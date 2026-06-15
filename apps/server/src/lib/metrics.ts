@@ -1,35 +1,24 @@
 import client, { Counter, Histogram, Gauge, Registry, collectDefaultMetrics } from "prom-client";
 
-// Configuration from environment variables
-const metricsPrefix = process.env.METRICS_PREFIX || "job-portal_";
+const rawMetricsPrefix = process.env.METRICS_PREFIX || "job-portal_";
+const metricsPrefixSanitized = rawMetricsPrefix.replace(/[^a-zA-Z0-9_:]/g, "_");
+const metricsPrefix = metricsPrefixSanitized.length ? metricsPrefixSanitized : "job-portal_";
 const metricsPath = process.env.METRICS_PATH || "/metrics";
 const metricsPort = parseInt(process.env.METRICS_PORT || "9090", 10);
 
-// Create a custom registry for your application metrics
 const registry = new Registry();
+registry.clear();
 
-// Set default labels that will be added to all metrics
 registry.setDefaultLabels({
   app: "job-portal",
   environment: process.env.NODE_ENV || "development",
 });
 
-// Collect default Node.js metrics (CPU, memory, event loop, etc.)
 collectDefaultMetrics({
   register: registry,
   prefix: metricsPrefix,
 });
 
-// ============================================================================
-// Custom Application Metrics
-// ============================================================================
-
-/**
- * HTTP request counter - tracks total number of requests
- *
- * @example
- * httpRequestsTotal.inc({ method: 'GET', route: '/api/users', status_code: '200' });
- */
 export const httpRequestsTotal = new Counter({
   name: `${metricsPrefix}http_requests_total`,
   help: "Total number of HTTP requests",
@@ -37,14 +26,6 @@ export const httpRequestsTotal = new Counter({
   registers: [registry],
 });
 
-/**
- * HTTP request duration histogram - tracks request latency
- *
- * @example
- * const end = httpRequestDuration.startTimer({ method: 'GET', route: '/api/users' });
- * // ... handle request
- * end({ status_code: '200' });
- */
 export const httpRequestDuration = new Histogram({
   name: `${metricsPrefix}http_request_duration_seconds`,
   help: "HTTP request duration in seconds",
@@ -53,28 +34,12 @@ export const httpRequestDuration = new Histogram({
   registers: [registry],
 });
 
-/**
- * Active connections gauge - tracks current number of active connections
- *
- * @example
- * activeConnections.inc();
- * // ... on disconnect
- * activeConnections.dec();
- */
 export const activeConnections = new Gauge({
   name: `${metricsPrefix}active_connections`,
   help: "Number of active connections",
   registers: [registry],
 });
 
-/**
- * Database query duration histogram
- *
- * @example
- * const end = dbQueryDuration.startTimer({ operation: 'SELECT', table: 'users' });
- * // ... execute query
- * end();
- */
 export const dbQueryDuration = new Histogram({
   name: `${metricsPrefix}db_query_duration_seconds`,
   help: "Database query duration in seconds",
@@ -83,12 +48,6 @@ export const dbQueryDuration = new Histogram({
   registers: [registry],
 });
 
-/**
- * Error counter - tracks application errors
- *
- * @example
- * errorsTotal.inc({ type: 'database', operation: 'insert' });
- */
 export const errorsTotal = new Counter({
   name: `${metricsPrefix}errors_total`,
   help: "Total number of errors",
@@ -96,21 +55,8 @@ export const errorsTotal = new Counter({
   registers: [registry],
 });
 
-// ============================================================================
-// Metrics Server
-// ============================================================================
-
 let metricsServer: import("http").Server | null = null;
 
-/**
- * Start a dedicated metrics server for Prometheus scraping
- * This runs on a separate port from your main application
- *
- * @example
- * // In your main entry file
- * import { startMetricsServer } from './lib/metrics';
- * startMetricsServer();
- */
 export async function startMetricsServer(): Promise<void> {
   const http = await import("http");
 
@@ -134,87 +80,41 @@ export async function startMetricsServer(): Promise<void> {
 
   metricsServer.listen(metricsPort, () => {
     console.log(`[Metrics] Server running on port ${metricsPort}`);
-    console.log(
-      `[Metrics] Prometheus scrape endpoint: http://localhost:${metricsPort}${metricsPath}`,
-    );
+    console.log(`[Metrics] Prometheus scrape endpoint: http://localhost:${metricsPort}${metricsPath}`);
   });
 }
 
-/**
- * Stop the metrics server gracefully
- *
- * @example
- * process.on('SIGTERM', async () => {
- *   await stopMetricsServer();
- *   process.exit(0);
- * });
- */
 export async function stopMetricsServer(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!metricsServer) {
-      resolve();
-      return;
-    }
-
-    metricsServer.close((err) => {
-      if (err) {
-        console.error("[Metrics] Error stopping server:", err);
-        reject(err);
-      } else {
-        console.log("[Metrics] Server stopped");
+    try {
+      if (!metricsServer) {
         resolve();
+        return;
       }
-    });
+      metricsServer.close((err) => {
+        if (err) {
+          console.error("[Metrics] Error stopping server:", err);
+          reject(err);
+        } else {
+          console.log("[Metrics] Server stopped");
+          resolve();
+        }
+      });
+    } catch (error) {
+      console.error("[Metrics] Error stopping server:", error);
+      reject(error);
+    }
   });
+  // ✅ Closing brace is HERE — nothing nested inside above
 }
 
-/**
- * Get metrics as a string (for embedding in your main app routes)
- *
- * @example
- * // If you prefer to expose metrics on your main app instead of separate server
- * app.get('/metrics', async (req, res) => {
- *   res.set('Content-Type', registry.contentType);
- *   res.end(await getMetrics());
- * });
- */
+// ✅ These are now at module top level, not inside stopMetricsServer
 export async function getMetrics(): Promise<string> {
   return registry.metrics();
 }
 
-/**
- * Get the content type for metrics response
- */
 export function getMetricsContentType(): string {
   return registry.contentType;
 }
 
-// Re-export prom-client for advanced usage
 export { client, registry, Counter, Histogram, Gauge };
-
-/**
- * Environment Variables:
- *
- * METRICS_PORT - Port for the metrics server (default: 9090)
- * METRICS_PATH - Path for the metrics endpoint (default: /metrics)
- * METRICS_PREFIX - Prefix for all metric names (default: job-portal_)
- *
- * Grafana Setup:
- * 1. Add Prometheus as a data source in Grafana
- * 2. Configure Prometheus to scrape http://your-server:9090/metrics
- * 3. Import dashboards or create custom ones using the metrics above
- *
- * Prometheus scrape config example:
- * scrape_configs:
- *   - job_name: 'job-portal'
- *     static_configs:
- *       - targets: ['localhost:9090']
- *
- * Built-in metrics include:
- * - http_requests_total: Total HTTP requests (labeled by method, route, status)
- * - http_request_duration_seconds: Request latency histogram
- * - active_connections: Current number of active connections
- * - db_query_duration_seconds: Database query latency
- * - errors_total: Error counter by type
- * - Default Node.js metrics (CPU, memory, event loop, GC, etc.)
- */

@@ -29,27 +29,33 @@ export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () 
       name: "",
     },
     onSubmit: async ({ value }) => {
-      await authClient.signUp.email(
-        {
-          email: value.email,
-          password: value.password,
-          name: value.name,
-        },
-        {
-          onSuccess: () => {
-            router.push("/dashboard");
-            toast.success("Sign up successful");
+      console.log("Form Log in value", value);
+      try {
+        await authClient.signUp.email(
+          {
+            email: value.email,
+            password: value.password,
+            name: value.name,
           },
-          onError: (error) => {
-            toast.error(error.error.message || error.error.statusText);
+          {
+            onSuccess: () => {
+              router.push("/dashboard");
+              toast.success("Sign up successful");
+            },
+            onError: (error) => {
+              toast.error(error.error.message || error.error.statusText);
+            },
           },
-        },
-      );
+        );
+      } catch (e: any) {
+        // Network or unexpected error handling
+        toast.error(e?.message ?? "Failed to connect to the authentication service");
+      }
     },
     validators: {
       onSubmit: z.object({
         name: z.string().min(2, "Name must be at least 2 characters"),
-        email: z.email("Invalid email address"),
+        email: z.string().email("Invalid email address"),
         password: z.string().min(8, "Password must be at least 8 characters"),
       }),
     },

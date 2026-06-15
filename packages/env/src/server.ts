@@ -7,7 +7,10 @@ export const env = createEnv({
     DATABASE_URL: z.string().min(1),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
-    CORS_ORIGIN: z.url(),
+    // Allow comma-separated origins (e.g. "http://localhost:3001,http://localhost:3000")
+    // We validate as string here and parse where it's used because multiple origins
+    // are represented as a comma-separated string in env variables.
+    CORS_ORIGIN: z.string().default("http://localhost:3001"),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     PORT: z.coerce.number().default(5000),
     REDIS_HOST: z.string().default("localhost"),

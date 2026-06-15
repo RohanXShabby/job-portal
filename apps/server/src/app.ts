@@ -11,11 +11,15 @@ import { requestQueueMiddleware } from "./middleware/request-queue.middleware.js
 import { rateLimiter } from "./middleware/rate-limit.middleware.js";
 
 const app = new Hono();
+// Support multiple comma-separated origins from env (e.g. "http://localhost:3001,http://localhost:3000")
+const allowedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+const devAllowAll = env.NODE_ENV !== "production";
+const corsOrigin = devAllowAll ? true : (allowedOrigins.length === 0 ? false : (allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins));
 
 app.use(
     "*",
     cors({
-        origin: env.CORS_ORIGIN,
+        origin: corsOrigin,
         allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowHeaders: ["Content-Type", "Authorization"],
         credentials: true,

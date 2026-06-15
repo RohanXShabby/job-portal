@@ -8,17 +8,36 @@ import app from "./app.js";
 import { startMetricsServer } from "./lib/metrics.js";
 
 const authApp = express();
+// Support multiple comma-separated origins from env (e.g. "http://localhost:3001,http://localhost:3000")
+// In development allow all origins to simplify local testing.
+const allowedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+const devAllowAll = env.NODE_ENV !== "production";
+
+// Debug incoming origin for auth routes (helps diagnose preflight issues)
+authApp.use((req, res, next) => {
+  if (req.url && req.url.startsWith("/api/auth")) {
+    // eslint-disable-next-line no-console
+    console.debug("[CORS DEBUG] Origin:", req.headers.origin, "Method:", req.method, "URL:", req.url);
+  }
+  next();
+});
 
 authApp.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: (origin: any, callback: any) => {
+      // Allow non-browser requests (curl, server-to-server) when origin is undefined
+      if (!origin) return callback(null, true);
+      if (devAllowAll) return callback(null, true);
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   }),
 );
 
-authApp.all("/api/auth*", toNodeHandler(auth));
+authApp.all("/api/auth/{*path}", toNodeHandler(auth));
 
 const server = http.createServer(async (req, res) => {
   if (!req.url || req.url.startsWith("/api/auth")) {

@@ -243,7 +243,7 @@ export function startRequestWorker() {
  * Process a queued request
  * This is a placeholder - integrate with your actual app logic
  */
-async function processQueuedRequest(request: Request): Promise<Response> {
+async function processQueuedRequest(_request: Request): Promise<Response> {
   // This would need to be integrated with your Hono app
   // For now, return a placeholder response
   return new Response(

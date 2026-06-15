@@ -41,9 +41,11 @@ export const rolePermissions: Record<string, string[]> = {
 export type UserRole = "super_admin" | "admin" | "recruiter" | "candidate";
 export type Permission = string;
 
+const trustedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+
 export const auth = betterAuth({
   database: mongodbAdapter(client),
-  trustedOrigins: [env.CORS_ORIGIN],
+  trustedOrigins: trustedOrigins.length ? trustedOrigins : undefined,
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
