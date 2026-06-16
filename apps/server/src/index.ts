@@ -1,5 +1,5 @@
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import http from "http";
 import { env } from "@job-portal/env/server";
 import { auth } from "@job-portal/auth";
@@ -14,7 +14,7 @@ const allowedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).f
 const devAllowAll = env.NODE_ENV !== "production";
 
 // Debug incoming origin for auth routes (helps diagnose preflight issues)
-authApp.use((req, res, next) => {
+authApp.use((req, _res, next) => {
   if (req.url && req.url.startsWith("/api/auth")) {
     // eslint-disable-next-line no-console
     console.debug("[CORS DEBUG] Origin:", req.headers.origin, "Method:", req.method, "URL:", req.url);
@@ -24,13 +24,13 @@ authApp.use((req, res, next) => {
 
 authApp.use(
   cors({
-    origin: (origin: any, callback: any) => {
+    origin: ((origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
       // Allow non-browser requests (curl, server-to-server) when origin is undefined
       if (!origin) return callback(null, true);
       if (devAllowAll) return callback(null, true);
       if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
-    },
+    }) satisfies CorsOptions["origin"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -48,7 +48,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const request = new Request(`http://localhost${req.url}`, {
       method: req.method,
-      headers: req.headers as any,
+      headers: req.headers as Record<string, string>,
       body: req.method === "GET" || req.method === "HEAD" ? undefined : req,
     });
 

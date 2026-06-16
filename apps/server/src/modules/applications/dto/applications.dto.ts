@@ -2,12 +2,12 @@ import { z } from "zod";
 
 export const applyJobSchema = z.object({
   jobId: z.string().min(1, "Job ID is required"),
-  resumeUrl: z.string().url("Valid resume URL is required"),
+  resumeUrl: z.string().url("Valid resume URL is required").optional(),
   coverLetter: z.string().optional(),
 });
 
 export const updateApplicationStatusSchema = z.object({
-  status: z.enum(["pending", "reviewed", "shortlisted", "accepted", "rejected"]),
+  status: z.enum(["pending", "reviewed", "accepted", "rejected"]),
   note: z.string().optional(),
 });
 

@@ -20,14 +20,14 @@ usersRouter.route("/", roleManagementRouter);
 usersRouter.get(
   "/list",
   requireAuth,
-  requireRole(["admin", "super_admin"]),
+  requireRole("super_admin"),
   (c) => usersController.listUsers(c)
 );
 
 usersRouter.delete(
   "/:id",
   requireAuth,
-  requireRole(["admin", "super_admin"]),
+  requireRole("super_admin"),
   (c) => usersController.deleteUser(c)
 );
 

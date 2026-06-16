@@ -23,6 +23,28 @@ export interface EmailJobData {
   templateId?: string;
 }
 
+export type EmailNotificationJobData =
+  | {
+      event: "candidate_applied";
+      candidateId: string;
+      jobId: string;
+      applicationId: string;
+    }
+  | {
+      event: "recruiter_new_application";
+      recruiterId: string;
+      candidateId: string;
+      jobId: string;
+      applicationId: string;
+    }
+  | {
+      event: "application_status_changed";
+      candidateId: string;
+      jobId: string;
+      applicationId: string;
+      status: "pending" | "reviewed" | "accepted" | "rejected";
+    };
+
 export interface NotificationJobData {
   userId: string;
   type: "push" | "in-app" | "email";
@@ -34,26 +56,26 @@ export interface NotificationJobData {
 export interface ResumeJobData {
   userId: string;
   resumeId: string;
-  s3Key: string;
+  resumeUrl: string;
 }
 
 export interface SearchIndexJobData {
   action: "index" | "update" | "delete";
   jobId: string;
-  jobData?: any; // The payload to index
+  jobData?: Record<string, unknown>;
 }
 
 export interface AnalyticsJobData {
   event: string;
   userId?: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DLQJobData {
   queueName: string;
   jobId: string;
-  jobData: any;
+  jobData: unknown;
   failedReason: string;
   failedAt: string;
 }
@@ -72,6 +94,12 @@ export async function queueEmail(data: EmailJobData, options?: { delay?: number;
     ...defaultRetryOptions,
     delay: options?.delay,
     priority: options?.priority,
+  });
+}
+
+export async function queueEmailNotification(data: EmailNotificationJobData) {
+  return emailQueue.add("email-notification", data, {
+    ...defaultRetryOptions,
   });
 }
 

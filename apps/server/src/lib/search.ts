@@ -30,11 +30,35 @@ export interface SearchResultResponse<T> {
 }
 
 export interface ISearchService {
-  indexJob(job: any): Promise<void>;
-  updateJob(job: any): Promise<void>;
+  indexJob(job: Record<string, unknown>): Promise<void>;
+  updateJob(job: Record<string, unknown>): Promise<void>;
   deleteJob(jobId: string): Promise<void>;
-  searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<any>>;
+  searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<Record<string, unknown>>>;
   healthCheck(): Promise<{ status: "available" | "unavailable"; engine: string }>;
+}
+
+function normalizeJobForSearch(job: Record<string, unknown>) {
+  const salaryRange = job.salaryRange as { min?: number; max?: number } | undefined;
+  const id = String(job._id ?? job.id);
+  return {
+    id,
+    title: job.title,
+    description: job.description,
+    company: job.company ?? job.companyName,
+    companyId: job.companyId ? String(job.companyId) : undefined,
+    companyName: job.companyName ?? job.company,
+    location: job.location,
+    type: job.type,
+    skills: job.skills ?? job.skillsRequired,
+    skillsRequired: job.skillsRequired ?? job.skills,
+    experienceLevel: job.experienceLevel,
+    salary: job.salary,
+    salaryMin: salaryRange?.min ?? job.salary,
+    salaryMax: salaryRange?.max ?? job.salary,
+    status: job.status,
+    postedBy: job.postedBy,
+    createdAt: job.createdAt,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -51,43 +75,22 @@ class ElasticsearchService implements ISearchService {
     });
   }
 
-  async indexJob(job: any): Promise<void> {
+  async indexJob(job: Record<string, unknown>): Promise<void> {
+    const document = normalizeJobForSearch(job);
     await this.client.index({
       index: this.indexName,
-      id: job._id.toString(),
-      document: {
-        id: job._id.toString(),
-        title: job.title,
-        description: job.description,
-        companyId: job.companyId.toString(),
-        companyName: job.companyName,
-        location: job.location,
-        type: job.type,
-        skillsRequired: job.skillsRequired,
-        experienceLevel: job.experienceLevel,
-        salaryMin: job.salaryRange.min,
-        salaryMax: job.salaryRange.max,
-        createdAt: job.createdAt,
-      },
+      id: document.id,
+      document,
       refresh: "wait_for",
     });
   }
 
-  async updateJob(job: any): Promise<void> {
+  async updateJob(job: Record<string, unknown>): Promise<void> {
+    const document = normalizeJobForSearch(job);
     await this.client.update({
       index: this.indexName,
-      id: job._id.toString(),
-      doc: {
-        title: job.title,
-        description: job.description,
-        companyName: job.companyName,
-        location: job.location,
-        type: job.type,
-        skillsRequired: job.skillsRequired,
-        experienceLevel: job.experienceLevel,
-        salaryMin: job.salaryRange.min,
-        salaryMax: job.salaryRange.max,
-      },
+      id: document.id,
+      doc: document,
       refresh: "wait_for",
     });
   }
@@ -100,12 +103,12 @@ class ElasticsearchService implements ISearchService {
     });
   }
 
-  async searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<any>> {
+  async searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<Record<string, unknown>>> {
     const { query, filters, page = 1, limit = 20 } = params;
     const from = (page - 1) * limit;
 
-    const must: any[] = [];
-    const filter: any[] = [];
+    const must: Record<string, unknown>[] = [];
+    const filter: Record<string, unknown>[] = [];
 
     // Full text & fuzzy matching
     if (query) {
@@ -140,7 +143,7 @@ class ElasticsearchService implements ISearchService {
         });
       }
       if (filters.minSalary !== undefined || filters.maxSalary !== undefined) {
-        const range: any = {};
+        const range: { gte?: number; lte?: number } = {};
         if (filters.minSalary !== undefined) range.gte = filters.minSalary;
         if (filters.maxSalary !== undefined) range.lte = filters.maxSalary;
         filter.push({ range: { salaryMin: range } });
@@ -165,7 +168,7 @@ class ElasticsearchService implements ISearchService {
       const results = response.hits.hits.map((hit) => ({
         id: hit._id || "",
         score: hit._score ?? undefined,
-        source: hit._source as any,
+        source: hit._source as Record<string, unknown>,
       }));
 
       return { results, total, page, limit };
@@ -196,42 +199,14 @@ class MeilisearchService implements ISearchService {
     this.client = new Meilisearch({ host, apiKey });
   }
 
-  async indexJob(job: any): Promise<void> {
+  async indexJob(job: Record<string, unknown>): Promise<void> {
     const index = this.client.index(this.indexName);
-    await index.addDocuments([
-      {
-        id: job._id.toString(),
-        title: job.title,
-        description: job.description,
-        companyId: job.companyId.toString(),
-        companyName: job.companyName,
-        location: job.location,
-        type: job.type,
-        skillsRequired: job.skillsRequired,
-        experienceLevel: job.experienceLevel,
-        salaryMin: job.salaryRange.min,
-        salaryMax: job.salaryRange.max,
-        createdAt: job.createdAt,
-      },
-    ]);
+    await index.addDocuments([normalizeJobForSearch(job)]);
   }
 
-  async updateJob(job: any): Promise<void> {
+  async updateJob(job: Record<string, unknown>): Promise<void> {
     const index = this.client.index(this.indexName);
-    await index.updateDocuments([
-      {
-        id: job._id.toString(),
-        title: job.title,
-        description: job.description,
-        companyName: job.companyName,
-        location: job.location,
-        type: job.type,
-        skillsRequired: job.skillsRequired,
-        experienceLevel: job.experienceLevel,
-        salaryMin: job.salaryRange.min,
-        salaryMax: job.salaryRange.max,
-      },
-    ]);
+    await index.updateDocuments([normalizeJobForSearch(job)]);
   }
 
   async deleteJob(jobId: string): Promise<void> {
@@ -239,7 +214,7 @@ class MeilisearchService implements ISearchService {
     await index.deleteDocument(jobId);
   }
 
-  async searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<any>> {
+  async searchJobs(params: SearchQueryParams): Promise<SearchResultResponse<Record<string, unknown>>> {
     const { query, filters, page = 1, limit = 20 } = params;
     const index = this.client.index(this.indexName);
 

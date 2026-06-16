@@ -31,7 +31,7 @@
     "dev:server": "turbo -F server dev"
   },
   "dependencies": {
-    "@better-auth/infra": "^0.2.13",
+    "@better-auth/infra": "^0.2.14",
     "@job-portal/env": "workspace:*",
     "dotenv": "catalog:",
     "zod": "catalog:"

@@ -2,37 +2,29 @@ import { jobsRepository } from "../repositories/jobs.repository.js";
 import { queueSearchIndex } from "../../../lib/queue.js";
 import { searchService } from "../../../lib/search.js";
 import type { CreateJobInput, SearchJobQuery } from "../types.js";
-import { CompanyModel } from "@job-portal/db";
 
 export class JobsService {
   async getJobById(id: string) {
     return jobsRepository.findById(id);
   }
 
-  async createJob(data: CreateJobInput) {
-    // Fetch company name & logo to denormalize into Job document
-    const company = await CompanyModel.findOne({ _id: data.companyId } as any).lean();
-    if (!company) {
-      throw new Error(`Company with ID ${data.companyId} not found`);
-    }
-
+  async createJob(data: CreateJobInput, postedBy: string) {
     const job = await jobsRepository.create({
       ...data,
-      companyName: company.name,
-      companyLogo: company.logoUrl,
+      postedBy,
     });
 
     // Enqueue search index task
     await queueSearchIndex({
       action: "index",
       jobId: job._id.toString(),
-      jobData: job,
+      jobData: job as unknown as Record<string, unknown>,
     });
 
     return job;
   }
 
-  async updateJob(id: string, updateData: any) {
+  async updateJob(id: string, updateData: Partial<CreateJobInput> & { status?: "active" | "closed" }) {
     const updatedJob = await jobsRepository.update(id, updateData);
     if (!updatedJob) {
       throw new Error("Job not found or already deleted");
@@ -42,7 +34,7 @@ export class JobsService {
     await queueSearchIndex({
       action: "update",
       jobId: id,
-      jobData: updatedJob,
+      jobData: updatedJob as unknown as Record<string, unknown>,
     });
 
     return updatedJob;

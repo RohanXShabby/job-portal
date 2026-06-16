@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export function sendSuccess<T>(
   c: Context,
@@ -14,7 +15,7 @@ export function sendSuccess<T>(
       data,
       meta,
     },
-    status
+    status as ContentfulStatusCode
   );
 }
 
@@ -22,7 +23,7 @@ export function sendError(
   c: Context,
   code: string,
   message: string,
-  status: number = 400
+  status: ContentfulStatusCode = 400
 ) {
   return c.json(
     {
@@ -32,6 +33,6 @@ export function sendError(
         message,
       },
     },
-    status as any
+    status
   );
 }

@@ -12,22 +12,40 @@ jobsRouter.get("/:id", (c) => jobsController.getById(c));
 jobsRouter.post(
   "/",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => jobsController.create(c)
 );
 
 jobsRouter.put(
   "/:id",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => jobsController.update(c)
 );
 
 jobsRouter.delete(
   "/:id",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => jobsController.delete(c)
+);
+
+jobsRouter.post("/:id/apply", requireAuth, requireRole("candidate"), (c) =>
+  jobsController.apply(c)
+);
+
+jobsRouter.get(
+  "/:id/applications",
+  requireAuth,
+  requireRole("recruiter", "super_admin"),
+  (c) => jobsController.listApplications(c)
+);
+
+jobsRouter.patch(
+  "/:id/applications/:appId",
+  requireAuth,
+  requireRole("recruiter", "super_admin"),
+  (c) => jobsController.updateApplicationStatus(c)
 );
 
 export default jobsRouter;

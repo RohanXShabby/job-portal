@@ -1,6 +1,21 @@
-import { auth, rolePermissions, type Permission } from "@job-portal/auth";
+import { auth, rolePermissions, type Permission, type UserRole } from "@job-portal/auth";
 import type { MiddlewareHandler } from "hono";
 import { sendError } from "../lib/response.js";
+
+interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  image?: string | null;
+  role?: UserRole;
+}
+
+interface SessionData {
+  id: string;
+  userId: string;
+  expiresAt: Date;
+}
 
 export interface AuthContext {
   Variables: {
@@ -9,14 +24,10 @@ export interface AuthContext {
       name: string;
       email: string;
       emailVerified: boolean;
-      image?: string;
-      role: "super_admin" | "admin" | "recruiter" | "candidate";
+      image?: string | null;
+      role: UserRole;
     };
-    session: {
-      id: string;
-      userId: string;
-      expiresAt: Date;
-    };
+    session: SessionData;
   };
 }
 
@@ -34,11 +45,15 @@ export const requireAuth: MiddlewareHandler<AuthContext> = async (c, next) => {
       return sendError(c, "UNAUTHORIZED", "Sign in required to access this resource", 401);
     }
 
-    c.set("session", session.session as any);
-    c.set("user", session.user as any);
+    const sessionUser = session.user as SessionUser;
+    c.set("session", session.session as SessionData);
+    c.set("user", {
+      ...sessionUser,
+      role: sessionUser.role ?? "candidate",
+    });
 
     await next();
-  } catch (error: any) {
+  } catch (error) {
     console.error("Auth middleware error:", error);
     return sendError(c, "INTERNAL_ERROR", "Authentication error", 500);
   }
@@ -47,7 +62,7 @@ export const requireAuth: MiddlewareHandler<AuthContext> = async (c, next) => {
 /**
  * Role-Based Access Control Middleware
  */
-export function requireRole(allowedRoles: ("super_admin" | "admin" | "recruiter" | "candidate")[]): MiddlewareHandler<AuthContext> {
+export function requireRole(...allowedRoles: UserRole[]): MiddlewareHandler<AuthContext> {
   return async (c, next) => {
     const user = c.get("user");
 

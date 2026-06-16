@@ -1,11 +1,15 @@
 import { applicationsRepository } from "../repositories/applications.repository.js";
-import { queueNotification } from "../../../lib/queue.js";
-import { JobModel, CompanyModel } from "@job-portal/db";
+import { queueEmailNotification, queueResumeProcessing } from "../../../lib/queue.js";
+import { JobModel } from "@job-portal/db";
+
+type ApplicationStatus = "pending" | "reviewed" | "accepted" | "rejected";
 
 export class ApplicationsService {
   async apply(candidateId: string, data: { jobId: string; resumeUrl: string; coverLetter?: string }) {
     // Check if job exists and is open
-    const job = await JobModel.findOne({ _id: data.jobId, status: "open", isDeleted: false } as any).lean();
+    const job = await JobModel.findOne({ _id: data.jobId, status: "active", isDeleted: false })
+      .select("title postedBy")
+      .lean<{ _id: { toString(): string }; title: string; postedBy: string }>();
     if (!job) {
       throw new Error("Job listing not found or is no longer accepting applications");
     }
@@ -23,28 +27,31 @@ export class ApplicationsService {
       coverLetter: data.coverLetter,
     });
 
-    // Notify recruiters via background queue
-    if (job.companyId) {
-      const company = await CompanyModel.findOne({ _id: job.companyId } as any).lean();
-      if (company && company.recruiters && company.recruiters.length > 0) {
-        for (const recruiterId of company.recruiters) {
-          await queueNotification({
-            userId: recruiterId,
-            type: "in-app",
-            title: "New Application Received",
-            message: `A candidate has applied for "${job.title}"`,
-            data: { jobId: data.jobId, applicationId: application._id.toString() },
-          });
-        }
-      }
-    }
+    await queueEmailNotification({
+      event: "candidate_applied",
+      candidateId,
+      jobId: data.jobId,
+      applicationId: application._id.toString(),
+    });
+    await queueEmailNotification({
+      event: "recruiter_new_application",
+      recruiterId: job.postedBy,
+      candidateId,
+      jobId: data.jobId,
+      applicationId: application._id.toString(),
+    });
+    await queueResumeProcessing({
+      userId: candidateId,
+      resumeId: application._id.toString(),
+      resumeUrl: data.resumeUrl,
+    });
 
     return application;
   }
 
   async updateStatus(
     applicationId: string,
-    status: string,
+    status: ApplicationStatus,
     changedBy: string,
     note?: string
   ) {
@@ -54,12 +61,12 @@ export class ApplicationsService {
     }
 
     // Notify candidate about status change
-    await queueNotification({
-      userId: application.candidateId,
-      type: "in-app",
-      title: `Application ${status.charAt(0).toUpperCase() + status.slice(1)}`,
-      message: `Your application status has been updated to "${status}"`,
-      data: { applicationId: application._id.toString(), status },
+    await queueEmailNotification({
+      event: "application_status_changed",
+      candidateId: application.candidateId,
+      jobId: application.jobId.toString(),
+      applicationId: application._id.toString(),
+      status,
     });
 
     return application;
@@ -79,6 +86,15 @@ export class ApplicationsService {
     const [applications, total] = await Promise.all([
       applicationsRepository.findByCandidate(candidateId, limit, skip),
       applicationsRepository.countByCandidate(candidateId),
+    ]);
+    return { applications, total, page, limit };
+  }
+
+  async getAllApplications(status?: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [applications, total] = await Promise.all([
+      applicationsRepository.findAll(status, limit, skip),
+      applicationsRepository.countAll(status),
     ]);
     return { applications, total, page, limit };
   }

@@ -3,14 +3,19 @@ import {
   connection,
   queueToDLQ,
   type EmailJobData,
+  type EmailNotificationJobData,
   type NotificationJobData,
   type ResumeJobData,
   type SearchIndexJobData,
   type AnalyticsJobData,
 } from "./queue.js";
 import { sendEmail } from "./email.js";
-import { NotificationModel, ResumeModel, AuditLogModel, User } from "@job-portal/db";
+import { NotificationModel, ResumeModel, AuditLogModel, User, JobModel } from "@job-portal/db";
 import { searchService } from "./search.js";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error";
+}
 
 /**
  * Helper to handle failed jobs and route to Dead Letter Queue (DLQ)
@@ -31,8 +36,8 @@ function handleWorkerFailure(queueName: string) {
           failedReason: err.message,
           failedAt: new Date().toISOString(),
         });
-      } catch (dlqErr: any) {
-        console.error(`[DLQ Error] Failed to write job ${job.id} to DLQ:`, dlqErr.message);
+      } catch (dlqErr) {
+        console.error(`[DLQ Error] Failed to write job ${job.id} to DLQ:`, getErrorMessage(dlqErr));
       }
     }
   };
@@ -41,16 +46,60 @@ function handleWorkerFailure(queueName: string) {
 /**
  * 1. Email Worker
  */
-export const emailWorker = new Worker<EmailJobData>(
+export const emailWorker = new Worker<EmailJobData | EmailNotificationJobData>(
   "email",
-  async (job: Job<EmailJobData>) => {
+  async (job: Job<EmailJobData | EmailNotificationJobData>) => {
+    console.log(`[Email Worker] Processing job ${job.id} (${job.name})`);
+
+    if ("event" in job.data) {
+      const data = job.data;
+      const jobDoc = await JobModel.findById(data.jobId).select("title postedBy").lean<{ title: string; postedBy: string }>();
+
+      if (data.event === "candidate_applied") {
+        const candidate = await User.findById(data.candidateId).select("email name").lean<{ email: string; name: string }>();
+        if (candidate?.email) {
+          await sendEmail({
+            to: candidate.email,
+            subject: "Application received",
+            html: `Hi ${candidate.name}, your application for "${jobDoc?.title ?? "this job"}" was received.`,
+          });
+        }
+      }
+
+      if (data.event === "recruiter_new_application") {
+        const recruiter = await User.findById(data.recruiterId).select("email name").lean<{ email: string; name: string }>();
+        if (recruiter?.email) {
+          await sendEmail({
+            to: recruiter.email,
+            subject: "New job application",
+            html: `A candidate applied to "${jobDoc?.title ?? "your job"}".`,
+          });
+        }
+      }
+
+      if (data.event === "application_status_changed") {
+        const candidate = await User.findById(data.candidateId).select("email name").lean<{ email: string; name: string }>();
+        if (candidate?.email) {
+          await sendEmail({
+            to: candidate.email,
+            subject: "Application status updated",
+            html: `Your application for "${jobDoc?.title ?? "this job"}" is now ${data.status}.`,
+          });
+        }
+      }
+
+      console.log(`[Email Worker] Completed notification job ${job.id}`);
+      return;
+    }
+
     const { to, subject, body } = job.data;
-    console.log(`[Email Worker] Processing email job ${job.id} to ${to}`);
+    console.log(`[Email Worker] Sending direct email job ${job.id} to ${to}`);
     await sendEmail({
       to,
       subject,
       html: body,
     });
+    console.log(`[Email Worker] Completed email job ${job.id}`);
   },
   { connection, concurrency: 5 }
 );
@@ -100,8 +149,8 @@ notificationWorker.on("failed", handleWorkerFailure("notification"));
 export const resumeWorker = new Worker<ResumeJobData>(
   "resume-processing",
   async (job: Job<ResumeJobData>) => {
-    const { userId, resumeId, s3Key } = job.data;
-    console.log(`[Resume Worker] Parsing resume file ${resumeId} for user ${userId} (Key: ${s3Key})`);
+    const { userId, resumeId, resumeUrl } = job.data;
+    console.log(`[Resume Worker] Parsing resume ${resumeId} for user ${userId} from ${resumeUrl}`);
 
     // Simulate parsing the resume (extracting text, skills)
     // In production, this would call a parser microservice or PDF library
@@ -135,15 +184,20 @@ export const searchIndexWorker = new Worker<SearchIndexJobData>(
   "search-indexing",
   async (job: Job<SearchIndexJobData>) => {
     const { action, jobId, jobData } = job.data;
-    console.log(`[Search Index Worker] Syncing search index for Job: ${jobId} (Action: ${action})`);
+    console.log(`[Search Index Worker] Processing job ${job.id}: ${action} search document for ${jobId}`);
 
-    if (action === "index") {
+    if ((action === "index" || action === "update") && !jobData) {
+      throw new Error(`Search job ${job.id} missing jobData for ${action}`);
+    }
+
+    if (action === "index" && jobData) {
       await searchService.indexJob(jobData);
-    } else if (action === "update") {
+    } else if (action === "update" && jobData) {
       await searchService.updateJob(jobData);
     } else if (action === "delete") {
       await searchService.deleteJob(jobId);
     }
+    console.log(`[Search Index Worker] Completed job ${job.id}`);
   },
   { connection, concurrency: 5 }
 );

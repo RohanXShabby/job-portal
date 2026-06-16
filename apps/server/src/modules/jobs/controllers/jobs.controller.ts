@@ -2,7 +2,11 @@ import type { Context } from "hono";
 import { jobsService } from "../services/jobs.service.js";
 import { createJobSchema, updateJobSchema, searchJobQuerySchema } from "../dto/jobs.dto.js";
 import { sendSuccess, sendError } from "../../../lib/response.js";
-import { CompanyModel } from "@job-portal/db";
+import { applicationsController } from "../../applications/controllers/applications.controller.js";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error";
+}
 
 export class JobsController {
   /**
@@ -23,8 +27,8 @@ export class JobsController {
         page: results.page,
         limit: results.limit,
       });
-    } catch (err: any) {
-      return sendError(c, "SEARCH_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "SEARCH_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -42,8 +46,8 @@ export class JobsController {
       }
 
       return sendSuccess(c, job, "Job fetched successfully");
-    } catch (err: any) {
-      return sendError(c, "DB_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "DB_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -59,28 +63,11 @@ export class JobsController {
         return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
       }
 
-      // Authorization check: Make sure user owns/is part of company
       const user = c.get("user");
-      if (user.role !== "admin" && user.role !== "super_admin") {
-        const company = await CompanyModel.findOne({
-          _id: parsed.data.companyId,
-          recruiters: user.id,
-        } as any);
-
-        if (!company) {
-          return sendError(
-            c,
-            "UNAUTHORIZED",
-            "You are not authorized to post a job for this company.",
-            403
-          );
-        }
-      }
-
-      const job = await jobsService.createJob(parsed.data);
+      const job = await jobsService.createJob(parsed.data, user.id);
       return sendSuccess(c, job, "Job listing created successfully", undefined, 201);
-    } catch (err: any) {
-      return sendError(c, "CREATE_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "CREATE_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -106,26 +93,14 @@ export class JobsController {
         return sendError(c, "NOT_FOUND", "Job listing not found", 404);
       }
 
-      if (user.role !== "admin" && user.role !== "super_admin") {
-        const company = await CompanyModel.findOne({
-          _id: existingJob.companyId,
-          recruiters: user.id,
-        } as any);
-
-        if (!company) {
-          return sendError(
-            c,
-            "UNAUTHORIZED",
-            "You are not authorized to modify this job listing.",
-            403
-          );
-        }
+      if (user.role !== "super_admin" && existingJob.postedBy !== user.id) {
+        return sendError(c, "FORBIDDEN", "You can only modify jobs you posted.", 403);
       }
 
       const updated = await jobsService.updateJob(id, parsed.data);
       return sendSuccess(c, updated, "Job listing updated successfully");
-    } catch (err: any) {
-      return sendError(c, "UPDATE_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "UPDATE_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -143,27 +118,27 @@ export class JobsController {
         return sendError(c, "NOT_FOUND", "Job listing not found", 404);
       }
 
-      if (user.role !== "admin" && user.role !== "super_admin") {
-        const company = await CompanyModel.findOne({
-          _id: existingJob.companyId,
-          recruiters: user.id,
-        } as any);
-
-        if (!company) {
-          return sendError(
-            c,
-            "UNAUTHORIZED",
-            "You are not authorized to delete this job listing.",
-            403
-          );
-        }
+      if (user.role !== "super_admin" && existingJob.postedBy !== user.id) {
+        return sendError(c, "FORBIDDEN", "You can only delete jobs you posted.", 403);
       }
 
       await jobsService.deleteJob(id);
       return sendSuccess(c, null, "Job listing deleted successfully");
-    } catch (err: any) {
-      return sendError(c, "DELETE_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "DELETE_ERROR", getErrorMessage(err), 500);
     }
+  }
+
+  async apply(c: Context) {
+    return applicationsController.applyToJobRoute(c);
+  }
+
+  async listApplications(c: Context) {
+    return applicationsController.listByNestedJob(c);
+  }
+
+  async updateApplicationStatus(c: Context) {
+    return applicationsController.updateNestedStatus(c);
   }
 }
 export const jobsController = new JobsController();

@@ -6,6 +6,8 @@ import companiesRouter from "./modules/companies/routes.js";
 import jobsRouter from "./modules/jobs/routes.js";
 import applicationsRouter from "./modules/applications/routes.js";
 import paymentsRouter from "./modules/payments/routes.js";
+import { ApplicationModel, JobModel, User } from "@job-portal/db";
+import { requireAuth, requireRole } from "./middleware/auth.middleware.js";
 import { getMetrics, getMetricsContentType } from "./lib/metrics.js";
 import { requestQueueMiddleware } from "./middleware/request-queue.middleware.js";
 import { rateLimiter } from "./middleware/rate-limit.middleware.js";
@@ -14,7 +16,11 @@ const app = new Hono();
 // Support multiple comma-separated origins from env (e.g. "http://localhost:3001,http://localhost:3000")
 const allowedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
 const devAllowAll = env.NODE_ENV !== "production";
-const corsOrigin = devAllowAll ? true : (allowedOrigins.length === 0 ? false : (allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins));
+const corsOrigin = devAllowAll
+    ? "*"
+    : allowedOrigins.length === 1
+      ? allowedOrigins[0]
+      : allowedOrigins;
 
 app.use(
     "*",
@@ -71,6 +77,25 @@ app.get("/queue-stats", async (c) => {
     const { getQueueStats } = await import("./middleware/request-queue.middleware.js");
     const stats = await getQueueStats();
     return c.json(stats);
+});
+
+app.get("/api/admin/stats", requireAuth, requireRole("super_admin"), async (c) => {
+    const [totalJobs, activeListings, applications, users] = await Promise.all([
+        JobModel.countDocuments({ isDeleted: false }),
+        JobModel.countDocuments({ isDeleted: false, status: "active" }),
+        ApplicationModel.countDocuments({ isDeleted: false }),
+        User.countDocuments({ isDeleted: false }),
+    ]);
+
+    return c.json({
+        success: true,
+        data: {
+            totalJobs,
+            activeListings,
+            applications,
+            users,
+        },
+    });
 });
 
 app.route("/api/users", usersRouter);

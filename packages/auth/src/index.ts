@@ -2,6 +2,7 @@ import { client } from "@job-portal/db";
 import { env } from "@job-portal/env/server";
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { dash } from "@better-auth/infra";
 
 // Role-based permissions configuration
 export const rolePermissions: Record<string, string[]> = {
@@ -12,13 +13,6 @@ export const rolePermissions: Record<string, string[]> = {
     "manage_jobs",
     "manage_applications",
     "manage_payments",
-    "view_analytics",
-    "manage_settings",
-  ],
-  admin: [
-    "manage_companies",
-    "manage_jobs",
-    "manage_applications",
     "view_analytics",
     "manage_settings",
   ],
@@ -38,7 +32,7 @@ export const rolePermissions: Record<string, string[]> = {
   ],
 };
 
-export type UserRole = "super_admin" | "admin" | "recruiter" | "candidate";
+export type UserRole = "super_admin" | "recruiter" | "candidate";
 export type Permission = string;
 
 const trustedOrigins = (env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -49,6 +43,16 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
+  },
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        required: false,
+        defaultValue: "candidate",
+        input: false,
+      },
+    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
@@ -69,4 +73,7 @@ export const auth = betterAuth({
       enabled: true,
     },
   },
+  plugins: [
+    dash(),
+  ],
 });

@@ -9,9 +9,9 @@ export interface JobFilter {
   type?: string;
   experienceLevel?: string;
   companyId?: string;
+  skills?: { $all: string[] };
   skillsRequired?: { $all: string[] };
-  "salaryRange.min"?: { $gte: number };
-  "salaryRange.max"?: { $lte: number };
+  salary?: { $gte?: number; $lte?: number };
   isDeleted: boolean;
   status?: string;
 }

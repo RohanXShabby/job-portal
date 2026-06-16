@@ -1,5 +1,25 @@
 import mongoose, { Schema } from "mongoose";
 
+export type ApplicationStatus = "pending" | "reviewed" | "accepted" | "rejected";
+
+export interface ApplicationRecord {
+  jobId: mongoose.Types.ObjectId | string;
+  candidateId: string;
+  resumeUrl: string;
+  coverLetter?: string;
+  status: ApplicationStatus;
+  appliedAt: Date;
+  timeline: Array<{
+    status: string;
+    changedAt: Date;
+    changedBy: string;
+    note?: string;
+  }>;
+  isDeleted: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const ApplicationSchema = new Schema(
   {
     jobId: { type: Schema.Types.ObjectId, ref: "Job", required: true },
@@ -8,9 +28,10 @@ const ApplicationSchema = new Schema(
     coverLetter: { type: String },
     status: {
       type: String,
-      enum: ["pending", "reviewed", "shortlisted", "accepted", "rejected"],
+      enum: ["pending", "reviewed", "accepted", "rejected"],
       default: "pending",
     },
+    appliedAt: { type: Date, default: Date.now },
     timeline: [
       {
         status: { type: String, required: true },
@@ -30,6 +51,6 @@ ApplicationSchema.index({ candidateId: 1, createdAt: -1 });
 ApplicationSchema.index({ jobId: 1, candidateId: 1 }, { unique: true }); // Prevent duplicate applications
 
 export const ApplicationModel =
-  mongoose.models.Application || mongoose.model("Application", ApplicationSchema);
+  (mongoose.models.Application as mongoose.Model<ApplicationRecord> | undefined) ||
+  mongoose.model<ApplicationRecord>("Application", ApplicationSchema);
 export { ApplicationSchema };
-

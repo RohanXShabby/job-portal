@@ -8,7 +8,7 @@ const applicationsRouter = new Hono();
 applicationsRouter.post(
   "/",
   requireAuth,
-  requireRole(["candidate"]),
+  requireRole("candidate"),
   (c) => applicationsController.apply(c)
 );
 
@@ -16,15 +16,22 @@ applicationsRouter.post(
 applicationsRouter.get(
   "/me",
   requireAuth,
-  requireRole(["candidate"]),
+  requireRole("candidate"),
   (c) => applicationsController.myApplications(c)
+);
+
+applicationsRouter.get(
+  "/all",
+  requireAuth,
+  requireRole("super_admin"),
+  (c) => applicationsController.listAll(c)
 );
 
 // Recruiter/Admin lists applications for a job
 applicationsRouter.get(
   "/",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => applicationsController.listByJob(c)
 );
 
@@ -39,7 +46,7 @@ applicationsRouter.get(
 applicationsRouter.patch(
   "/:id/status",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => applicationsController.updateStatus(c)
 );
 

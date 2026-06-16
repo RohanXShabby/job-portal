@@ -6,6 +6,12 @@ import {
   listApplicationsSchema,
 } from "../dto/applications.dto.js";
 import { sendSuccess, sendError } from "../../../lib/response.js";
+import { uploadResumeToCloudinary } from "../../../lib/cloudinary.js";
+import { jobsService } from "../../jobs/services/jobs.service.js";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error";
+}
 
 export class ApplicationsController {
   /**
@@ -20,14 +26,65 @@ export class ApplicationsController {
       if (!parsed.success) {
         return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
       }
-
-      const application = await applicationsService.apply(user.id, parsed.data);
-      return sendSuccess(c, application, "Application submitted successfully", undefined, 201);
-    } catch (err: any) {
-      if (err.message.includes("already applied") || err.message.includes("no longer accepting")) {
-        return sendError(c, "CONFLICT", err.message, 409);
+      if (!parsed.data.resumeUrl) {
+        return sendError(c, "VALIDATION_ERROR", "Resume URL is required", 400);
       }
-      return sendError(c, "APPLY_ERROR", err.message, 500);
+
+      const application = await applicationsService.apply(user.id, {
+        ...parsed.data,
+        resumeUrl: parsed.data.resumeUrl,
+      });
+      return sendSuccess(c, application, "Application submitted successfully", undefined, 201);
+    } catch (err) {
+      const message = getErrorMessage(err);
+      if (message.includes("already applied") || message.includes("no longer accepting")) {
+        return sendError(c, "CONFLICT", message, 409);
+      }
+      return sendError(c, "APPLY_ERROR", message, 500);
+    }
+  }
+
+  async applyToJobRoute(c: Context) {
+    try {
+      const user = c.get("user");
+      const jobId = c.req.param("id");
+      if (!jobId) return sendError(c, "VALIDATION_ERROR", "Job ID is required", 400);
+      const contentType = c.req.header("content-type") ?? "";
+
+      let resumeUrl: string | undefined;
+      let coverLetter: string | undefined;
+
+      if (contentType.includes("multipart/form-data")) {
+        const form = await c.req.parseBody();
+        const resume = form.resume;
+        coverLetter = typeof form.coverLetter === "string" ? form.coverLetter : undefined;
+        if (!(resume instanceof File)) {
+          return sendError(c, "VALIDATION_ERROR", "Resume file is required", 400);
+        }
+        const uploaded = await uploadResumeToCloudinary(resume, user.id);
+        resumeUrl = uploaded.secureUrl;
+      } else {
+        const body = await c.req.json();
+        const parsed = applyJobSchema.safeParse({ ...body, jobId });
+        if (!parsed.success) {
+          return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
+        }
+        resumeUrl = parsed.data.resumeUrl;
+        coverLetter = parsed.data.coverLetter;
+      }
+
+      if (!resumeUrl) {
+        return sendError(c, "VALIDATION_ERROR", "Resume URL or resume file is required", 400);
+      }
+
+      const application = await applicationsService.apply(user.id, { jobId, resumeUrl, coverLetter });
+      return sendSuccess(c, application, "Application submitted successfully", undefined, 201);
+    } catch (err) {
+      const message = getErrorMessage(err);
+      if (message.includes("already applied") || message.includes("no longer accepting")) {
+        return sendError(c, "CONFLICT", message, 409);
+      }
+      return sendError(c, "APPLY_ERROR", message, 500);
     }
   }
 
@@ -55,8 +112,31 @@ export class ApplicationsController {
         parsed.data.note
       );
       return sendSuccess(c, application, "Application status updated");
-    } catch (err: any) {
-      return sendError(c, "UPDATE_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "UPDATE_ERROR", getErrorMessage(err), 500);
+    }
+  }
+
+  async updateNestedStatus(c: Context) {
+    try {
+      const jobId = c.req.param("id");
+      const appId = c.req.param("appId");
+      if (!jobId || !appId) return sendError(c, "VALIDATION_ERROR", "Job and application IDs are required", 400);
+      const user = c.get("user");
+      const job = await jobsService.getJobById(jobId);
+      if (!job) return sendError(c, "NOT_FOUND", "Job listing not found", 404);
+      if (user.role !== "super_admin" && job.postedBy !== user.id) {
+        return sendError(c, "FORBIDDEN", "You can only manage applications for jobs you posted.", 403);
+      }
+
+      const body = await c.req.json();
+      const parsed = updateApplicationStatusSchema.safeParse(body);
+      if (!parsed.success) return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
+
+      const application = await applicationsService.updateStatus(appId, parsed.data.status, user.id, parsed.data.note);
+      return sendSuccess(c, application, "Application status updated");
+    } catch (err) {
+      return sendError(c, "UPDATE_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -88,8 +168,37 @@ export class ApplicationsController {
         page: result.page,
         limit: result.limit,
       });
-    } catch (err: any) {
-      return sendError(c, "LIST_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "LIST_ERROR", getErrorMessage(err), 500);
+    }
+  }
+
+  async listByNestedJob(c: Context) {
+    try {
+      const jobId = c.req.param("id");
+      if (!jobId) return sendError(c, "VALIDATION_ERROR", "Job ID is required", 400);
+      const user = c.get("user");
+      const job = await jobsService.getJobById(jobId);
+      if (!job) return sendError(c, "NOT_FOUND", "Job listing not found", 404);
+      if (user.role !== "super_admin" && job.postedBy !== user.id) {
+        return sendError(c, "FORBIDDEN", "You can only view applications for jobs you posted.", 403);
+      }
+      const parsed = listApplicationsSchema.safeParse({ ...c.req.query(), jobId });
+      if (!parsed.success) return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
+
+      const result = await applicationsService.getApplicationsByJob(
+        jobId,
+        parsed.data.status,
+        parsed.data.page,
+        parsed.data.limit,
+      );
+      return sendSuccess(c, result.applications, "Applications fetched", {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      });
+    } catch (err) {
+      return sendError(c, "LIST_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -110,8 +219,30 @@ export class ApplicationsController {
         page: result.page,
         limit: result.limit,
       });
-    } catch (err: any) {
-      return sendError(c, "LIST_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "LIST_ERROR", getErrorMessage(err), 500);
+    }
+  }
+
+  async listAll(c: Context) {
+    try {
+      const parsed = listApplicationsSchema.safeParse(c.req.query());
+      if (!parsed.success) {
+        return sendError(c, "VALIDATION_ERROR", parsed.error.message, 400);
+      }
+
+      const result = await applicationsService.getAllApplications(
+        parsed.data.status,
+        parsed.data.page,
+        parsed.data.limit,
+      );
+      return sendSuccess(c, result.applications, "Applications fetched", {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      });
+    } catch (err) {
+      return sendError(c, "LIST_ERROR", getErrorMessage(err), 500);
     }
   }
 
@@ -131,8 +262,8 @@ export class ApplicationsController {
       }
 
       return sendSuccess(c, application, "Application fetched");
-    } catch (err: any) {
-      return sendError(c, "DB_ERROR", err.message, 500);
+    } catch (err) {
+      return sendError(c, "DB_ERROR", getErrorMessage(err), 500);
     }
   }
 }

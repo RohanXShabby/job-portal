@@ -1,12 +1,19 @@
-import { ApplicationModel } from "@job-portal/db";
+import {
+  ApplicationModel,
+  type ApplicationRecord,
+  type ApplicationStatus,
+} from "@job-portal/db";
+import type mongoose from "mongoose";
+
+type ApplicationDocument = ApplicationRecord & { _id: mongoose.Types.ObjectId };
 
 export class ApplicationsRepository {
   async findById(id: string) {
-    return ApplicationModel.findOne({ _id: id, isDeleted: false } as any).lean();
+    return ApplicationModel.findOne({ _id: id, isDeleted: false }).lean<ApplicationDocument>();
   }
 
   async findByJobAndCandidate(jobId: string, candidateId: string) {
-    return ApplicationModel.findOne({ jobId, candidateId, isDeleted: false } as any).lean();
+    return ApplicationModel.findOne({ jobId, candidateId, isDeleted: false }).lean<ApplicationDocument>();
   }
 
   async create(data: {
@@ -33,12 +40,12 @@ export class ApplicationsRepository {
 
   async updateStatus(
     id: string,
-    status: string,
+    status: ApplicationStatus,
     changedBy: string,
     note?: string
   ) {
     return ApplicationModel.findOneAndUpdate(
-      { _id: id, isDeleted: false } as any,
+      { _id: id, isDeleted: false },
       {
         $set: { status },
         $push: {
@@ -50,31 +57,48 @@ export class ApplicationsRepository {
           },
         },
       },
-      { new: true } as any
-    ).lean();
+      { new: true }
+    ).lean<ApplicationDocument>();
   }
 
   async findByJob(jobId: string, status?: string, limit = 20, skip = 0) {
-    const filter: any = { jobId, isDeleted: false };
+    const filter: Record<string, unknown> = { jobId, isDeleted: false };
     if (status) filter.status = status;
 
-    return ApplicationModel.find(filter as any)
+    return ApplicationModel.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .lean();
+      .lean<ApplicationDocument[]>();
   }
 
   async findByCandidate(candidateId: string, limit = 20, skip = 0) {
-    return ApplicationModel.find({ candidateId, isDeleted: false } as any)
-      .sort({ createdAt: -1 } as any)
+    return ApplicationModel.find({ candidateId, isDeleted: false })
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .lean();
+      .lean<ApplicationDocument[]>();
+  }
+
+  async findAll(status?: string, limit = 20, skip = 0) {
+    const filter: Record<string, unknown> = { isDeleted: false };
+    if (status) filter.status = status;
+
+    return ApplicationModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean<ApplicationDocument[]>();
+  }
+
+  async countAll(status?: string): Promise<number> {
+    const filter: Record<string, unknown> = { isDeleted: false };
+    if (status) filter.status = status;
+    return ApplicationModel.countDocuments(filter);
   }
 
   async countByJob(jobId: string, status?: string): Promise<number> {
-    const filter: any = { jobId, isDeleted: false };
+    const filter: Record<string, unknown> = { jobId, isDeleted: false };
     if (status) filter.status = status;
     return ApplicationModel.countDocuments(filter);
   }

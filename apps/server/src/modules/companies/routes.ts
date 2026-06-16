@@ -13,21 +13,21 @@ companiesRouter.get("/:id", (c) => companiesController.getById(c));
 companiesRouter.post(
   "/",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => companiesController.create(c)
 );
 
 companiesRouter.put(
   "/:id",
   requireAuth,
-  requireRole(["recruiter", "admin", "super_admin"]),
+  requireRole("recruiter", "super_admin"),
   (c) => companiesController.update(c)
 );
 
 companiesRouter.delete(
   "/:id",
   requireAuth,
-  requireRole(["admin", "super_admin"]),
+  requireRole("super_admin"),
   (c) => companiesController.delete(c)
 );
 

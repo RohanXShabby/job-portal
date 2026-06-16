@@ -3,6 +3,7 @@ import { z } from "zod";
 import { User } from "@job-portal/db";
 import { requireAuth, requirePermission, type AuthContext } from "../../../middleware/auth.middleware.js";
 import { sendSuccess, sendError } from "../../../lib/response.js";
+import type { UserRole } from "@job-portal/auth";
 
 const roleRouter = new Hono<AuthContext>();
 
@@ -69,7 +70,7 @@ roleRouter.put("/:userId/role", requirePermission("manage_roles"), async (c) => 
 
     // Validate request body
     const schema = z.object({
-      role: z.enum(["super_admin", "admin", "recruiter", "candidate"]),
+      role: z.enum(["super_admin", "recruiter", "candidate"]),
     });
 
     const validation = schema.safeParse(body);
@@ -124,9 +125,13 @@ roleRouter.get("/", requirePermission("manage_users"), async (c) => {
     const skip = (page - 1) * limit;
 
     // Build query
-    const query: any = { isDeleted: false };
+    const query: {
+      isDeleted: boolean;
+      role?: UserRole;
+      $or?: Array<Record<string, { $regex: string; $options: string }>>;
+    } = { isDeleted: false };
 
-    if (role) {
+    if (role === "super_admin" || role === "recruiter" || role === "candidate") {
       query.role = role;
     }
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.string().min(1),
-    BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_API_KEY: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     // Allow comma-separated origins (e.g. "http://localhost:3001,http://localhost:3000")
     // We validate as string here and parse where it's used because multiple origins
@@ -28,6 +28,9 @@ export const env = createEnv({
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     S3_BUCKET_NAME: z.string().optional(),
+    CLOUDINARY_CLOUD_NAME: z.string().optional(),
+    CLOUDINARY_API_KEY: z.string().optional(),
+    CLOUDINARY_API_SECRET: z.string().optional(),
     METRICS_PORT: z.coerce.number().default(9090),
     METRICS_PATH: z.string().default("/metrics"),
     METRICS_PREFIX: z.string().default("job_portal_"),
